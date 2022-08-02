@@ -1,10 +1,9 @@
 {
-  "name": "cache-example",
+  "name": "swagger-compare",
   "version": "0.0.1",
-  "description": "demo cache",
+  "description": "swagger-compare",
   "keywords": [
     "TypeScript",
-    "express",
     "nodejs",
     "eslint"
   ],
