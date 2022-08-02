@@ -92,7 +92,7 @@ function parseComponents() {
   return componentsGrouped;
 }
 
-function compareJson(expectResp: any, currentResp: any, fields: any[], path: string, parentFields?: string[]) {
+function compareJson(expectResp: any, currentResp: any, fields: any[], path: string, parentFields?: string[], index?: number) {
   if (expectResp?.type !== 'object' && expectResp?.type === typeof currentResp) {
     return;
   }
@@ -106,14 +106,30 @@ function compareJson(expectResp: any, currentResp: any, fields: any[], path: str
     return;
   }
 
-  // compare properties
+  //  check redundant fields
+  const redundantFields = Object.keys(currentResp).filter(
+      (key) => Object.keys(expectResp?.properties || expectResp).every((currentKey) => currentKey !== key)
+  );
+
+  if (redundantFields?.length) {
+    redundantFields.forEach((field) => {
+      const fieldName = parentFields?.length ? `${parentFields.join('.')}${(typeof index === 'number') ? `[${index}]` : ''}.${field}` : field;
+      fields.push({
+        reason: 'redundant property',
+        path,
+        field: fieldName
+      });
+    });
+  }
+
+  // compare to expected
   for (const [name, detail] of Object.entries(expectResp?.properties || expectResp)) {
-    const fieldName = parentFields?.length ? `${parentFields.join('.')}.${name}` : name;
+    const fieldName = parentFields?.length ? `${parentFields.join('.')}${(typeof index === 'number') ? `[${index}]` : ''}.${name}` : name;
     const checkObj: any = detail;
     // lack field
     if (!currentResp[name]) {
       fields.push({
-        reason: 'lack field',
+        reason: 'missing property',
         path,
         field: fieldName
       });
@@ -166,15 +182,17 @@ function compareJson(expectResp: any, currentResp: any, fields: any[], path: str
 
     if (checkObj?.properties && Array.isArray(currentResp[name])) {
       // recursion
+      let idx = (typeof index === 'number') ? index : 0;
       parentFields.push(name);
       for (const nestedObj of currentResp[name]) {
-        compareJson(checkObj?.properties, nestedObj, fields, path, parentFields);
+        compareJson(checkObj?.properties, nestedObj, fields, path, parentFields, idx);
+        idx++;
       }
       continue;
     }
 
     if (checkObj?.properties && !Array.isArray(currentResp[name])) {
-      compareJson(checkObj?.properties, currentResp[name], fields, path, parentFields);
+      compareJson(checkObj?.properties, currentResp[name], fields, path, parentFields, index);
     }
   }
 }
