@@ -128,7 +128,7 @@ function compareJson(caseName: string, expectResp: any, currentResp: any, fields
     const fieldName = parentFields?.length ? `${parentFields.join('.')}${(typeof index === 'number') ? `[${index}]` : ''}.${name}` : name;
     const checkObj: any = detail;
     // lack field
-    if (currentResp[name] === undefined || currentResp[name] === null) {
+    if (!currentResp.hasOwnProperty(name)) {
       fields.push({
         reason: 'missing property',
         file: caseName,
@@ -138,7 +138,7 @@ function compareJson(caseName: string, expectResp: any, currentResp: any, fields
       continue;
     }
 
-    if (!checkObj?.properties) {
+    if (!checkObj?.properties && currentResp[name] !== null) {
       // no need recursion
       switch (checkObj?.type) {
         case 'array':
