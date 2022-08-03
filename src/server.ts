@@ -242,7 +242,7 @@ function parseResponseFiles(): {
           data: JSON.parse(chunks[1])
         });
       } catch (err) {
-        console.info('invalid response type');
+        console.info('invalid response type in case: ', `${responseDir}/${apiUrl}/${fileName}`);
       }
     }
   }
