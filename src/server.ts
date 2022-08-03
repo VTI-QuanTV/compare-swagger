@@ -12,50 +12,56 @@ const responseDir = process.env.RESPONSE_DIR;
 
 async function compare() {
   try {
-    const fieldsError: any[] = [];
+    const fieldsError: { reason: string, file: string, path: string, field?: string }[] = [];
     const swagger: any = yaml.load(fs.readFileSync(`${swaggerDir}/swagger.yaml`, { encoding: 'utf-8' }));
-    const responsesJson = parseResponseFiles();
     const components = parseComponents();
-    const swaggerByMethod: any = {};
-    const swaggerByMethodAndStatus: any = {};
-    for (const [path, el] of Object.entries(swagger['paths'])) {
-      for (const [method, detail] of Object.entries(el)) {
-        swaggerByMethod[`${capitalizeFirstLetter(method)}${path.replace(/\//g, '_').replace(/{|}|_v1_projects/g, '')}`] = detail['responses'];
-      }
-    }
-    for (const [path, el] of Object.entries(swaggerByMethod)) {
-      for (const [statusCode, response] of Object.entries(el)) {
-        const key = `${path}_${statusCode}`;
-        if (!response?.content?.['application/json']) {
-          // empty response
-          swaggerByMethodAndStatus[key] = null;
-          continue;
-        }
-        if (response?.content?.['application/json']?.schema?.['$ref']) {
-          const componentName = response?.content?.['application/json']?.schema?.['$ref']?.match(new RegExp('[^\\/]+$', 'g'))?.[0];
-          swaggerByMethodAndStatus[key] = components[componentName];
-          continue;
-        }
-        if (response?.content['application/json']?.schema?.properties?.items) {
-          // @ts-ignore
-          response?.content['application/json']?.schema?.properties?.items?.type = 'array';
-        }
-        swaggerByMethodAndStatus[key] = response?.content['application/json']?.schema;
-      }
-    }
+    const responsesJson = parseResponseFiles();
 
-    for (const [path, response] of Object.entries(swaggerByMethodAndStatus)) {
-      const objects = responsesJson.filter((el) => el?.path === path);
-      objects.forEach((obj) => {
-        const parentFields: any[] = [];
-        compareJson(obj.case, response, obj?.data, fieldsError, path, parentFields);
-      });
-    }
-    console.log('=======================================');
+    const swaggerByMethodAndStatus = groupSwaggerResponseByPath(swagger, components);
+    compareStatusCode(responsesJson, fieldsError);
+    responsesJson
+        .filter((resp) => resp.expectedStatusCode === resp.currentStatusCode)
+        .forEach((resp) => {
+          const parentFields: any[] = [];
+          const expectResp = swaggerByMethodAndStatus[resp.path];
+          compareJson(resp.case, expectResp, resp?.data, fieldsError, resp.path, parentFields);
+        });
     console.log(fieldsError);
   } catch (error) {
     console.error(error);
   }
+}
+
+function groupSwaggerResponseByPath(swagger: any, components: any) {
+  const swaggerByMethod: any = {};
+  const swaggerRespGrouped: any = {};
+  for (const [path, el] of Object.entries(swagger['paths'])) {
+    for (const [method, detail] of Object.entries(el)) {
+      swaggerByMethod[`${method?.toLowerCase()}${path.replace(/\//g, '_').replace(/{|}|_v1_projects/g, '')}`] = detail['responses'];
+    }
+  }
+  for (const [path, el] of Object.entries(swaggerByMethod)) {
+    for (const [statusCode, response] of Object.entries(el)) {
+      const key = `${path}_${statusCode}`;
+      if (!response?.content?.['application/json']) {
+        // empty response
+        swaggerRespGrouped[key] = null;
+        continue;
+      }
+      if (response?.content?.['application/json']?.schema?.['$ref']) {
+        const componentName = response?.content?.['application/json']?.schema?.['$ref']?.match(new RegExp('[^\\/]+$', 'g'))?.[0];
+        swaggerRespGrouped[key] = components[componentName];
+        continue;
+      }
+      if (response?.content['application/json']?.schema?.properties?.items) {
+        // @ts-ignore
+        response?.content['application/json']?.schema?.properties?.items?.type = 'array';
+      }
+      swaggerRespGrouped[key] = response?.content['application/json']?.schema;
+    }
+  }
+
+  return swaggerRespGrouped;
 }
 
 function parseComponents() {
@@ -67,6 +73,21 @@ function parseComponents() {
   }
 
   return componentsGrouped;
+}
+
+function compareStatusCode(
+    responseJson: { path: string, case: string, expectedStatusCode: string, currentStatusCode: string, data: any }[],
+    fieldsError: { reason: string, file: string, path: string, field?: string }[]
+  ) {
+  responseJson.forEach((resp) => {
+    if (resp.expectedStatusCode !== resp.currentStatusCode) {
+      fieldsError.push({
+        reason: 'unexpected http status code',
+        file: resp.case,
+        path: resp.path
+      });
+    }
+  });
 }
 
 function compareJson(caseName: string, expectResp: any, currentResp: any, fields: any[], path: string, parentFields?: string[], index?: number) {
@@ -91,9 +112,6 @@ function compareJson(caseName: string, expectResp: any, currentResp: any, fields
 
   if (redundantFields?.length) {
     redundantFields.forEach((field) => {
-      if (parentFields?.length) {
-
-      }
       const fieldName = parentFields?.length ? `${parentFields.join('.')}${(typeof index === 'number') ? `[${index}]` : ''}.${field}` : field;
       fields.push({
         reason: 'redundant property',
@@ -130,6 +148,15 @@ function compareJson(caseName: string, expectResp: any, currentResp: any, fields
               path,
               field: fieldName
             });
+          }
+          if (Array.isArray(currentResp[name]) && checkObj?.items) {
+            // recursion
+            let idx = (typeof index === 'number') ? index : 0;
+            parentFields.push(name);
+            for (const nestedObj of currentResp[name]) {
+              compareJson(caseName, checkObj?.items, nestedObj, fields, path, parentFields, idx);
+              idx++;
+            }
           }
           break;
         case 'float':
@@ -184,18 +211,33 @@ function compareJson(caseName: string, expectResp: any, currentResp: any, fields
   }
 }
 
-function parseResponseFiles() {
-  const currentResponses: any[] = [];
+function parseResponseFiles(): {
+    path: string,
+    case: string,
+    expectedStatusCode: string,
+    currentStatusCode: string,
+    data: any,
+  }[] {
+  const currentResponses: {
+    path: string,
+    case: string,
+    expectedStatusCode: string,
+    currentStatusCode: string,
+    data: any,
+  }[] = [];
   const dirs = fs.readdirSync(responseDir);
   for (const apiUrl of dirs) {
     const files = fs.readdirSync(`${responseDir}/${apiUrl}`);
     for (const fileName of files) {
       const file =  fs.readFileSync(`${responseDir}/${apiUrl}/${fileName}`, { encoding: 'utf-8' });
       const chunks = file.split('\r\n\r\n');
+      const currentStatusCode = chunks[0].match(new RegExp('(?<=HTTP\\/2 ).\\S+', 'gm'))[0];
       try {
         currentResponses.push({
-          path: `${apiUrl}_${chunks[0].match(new RegExp('(?<=HTTP\\/2 ).\\S+', 'gm'))[0]}`,
+          path: `${apiUrl}_${currentStatusCode}`,
           case: fileName,
+          currentStatusCode,
+          expectedStatusCode: chunks[2].match(new RegExp('(?<=expectedStatusCode: ).\\S+', 'gm'))[0],
           data: JSON.parse(chunks[1])
         });
       } catch (err) {
@@ -209,10 +251,6 @@ function parseResponseFiles() {
 
 function isInteger(n: number) {
   return n === +n && n === (n|0);
-}
-
-function capitalizeFirstLetter(s: string) {
-  return s[0].toUpperCase() + s.slice(1);
 }
 
 compare();
