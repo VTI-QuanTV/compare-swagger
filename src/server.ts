@@ -10,9 +10,9 @@ if (config.error) {
 const swaggerDir = process.env.SWAGGER_DIR;
 const responseDir = process.env.RESPONSE_DIR;
 
-async function compare() {
+function compare() {
   try {
-    const fieldsError: { reason: string, file: string, path: string, field?: string }[] = [];
+    const fieldsError: { reason: string, file: string, path: string, field?: string, expectedStatus?: string, actualStatus?: string }[] = [];
     const swagger: any = yaml.load(fs.readFileSync(`${swaggerDir}/swagger.yaml`, { encoding: 'utf-8' }));
     const components = parseComponents();
     const responsesJson = parseResponseFiles();
@@ -77,14 +77,16 @@ function parseComponents() {
 
 function compareStatusCode(
     responseJson: { path: string, case: string, expectedStatusCode: string, currentStatusCode: string, data: any }[],
-    fieldsError: { reason: string, file: string, path: string, field?: string }[]
+    fieldsError: { reason: string, file: string, path: string, field?: string, expectedStatus?: string, actualStatus?: string }[]
   ) {
   responseJson.forEach((resp) => {
     if (resp.expectedStatusCode !== resp.currentStatusCode) {
       fieldsError.push({
         reason: 'unexpected http status code',
         file: resp.case,
-        path: resp.path
+        path: resp.path,
+        expectedStatus: resp.expectedStatusCode,
+        actualStatus: resp.currentStatusCode
       });
     }
   });
@@ -99,8 +101,7 @@ function compareJson(caseName: string, expectResp: any, currentResp: any, fields
     fields.push({
       reason: 'expected null value',
       file: caseName,
-      path,
-      field: 'object'
+      path
     });
     return;
   }
@@ -237,7 +238,7 @@ function parseResponseFiles(): {
           path: `${apiUrl}_${currentStatusCode}`,
           case: fileName,
           currentStatusCode,
-          expectedStatusCode: chunks[2].match(new RegExp('(?<=expectedStatusCode: ).\\S+', 'gm'))[0],
+          expectedStatusCode: chunks[2].match(new RegExp('(?<=expect_code:).\\S+', 'gm'))[0],
           data: JSON.parse(chunks[1])
         });
       } catch (err) {
