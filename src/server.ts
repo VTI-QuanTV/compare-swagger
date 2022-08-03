@@ -1,6 +1,8 @@
 import dotenv from 'dotenv';
 import yaml from 'js-yaml';
 import fs from 'fs';
+import pug from 'pug';
+import path from 'path';
 
 const config = dotenv.config();
 if (config.error) {
@@ -9,10 +11,13 @@ if (config.error) {
 
 const swaggerDir = process.env.SWAGGER_DIR;
 const responseDir = process.env.RESPONSE_DIR;
+const htmlpath = process.env.HTML_PATH;
 
 function compare() {
   try {
-    const fieldsError: { reason: string, file: string, path: string, field?: string, expectedStatus?: string, actualStatus?: string }[] = [];
+    const fieldsError: {
+      reason: string, file: string, path: string, result: 'G' | 'NG', field?: string, expectedStatus?: string, actualStatus?: string
+    }[] = [];
     const swagger: any = yaml.load(fs.readFileSync(`${swaggerDir}/swagger.yaml`, { encoding: 'utf-8' }));
     const components = parseComponents();
     const responsesJson = parseResponseFiles();
@@ -24,9 +29,48 @@ function compare() {
         .forEach((resp) => {
           const parentFields: any[] = [];
           const expectResp = swaggerByMethodAndStatus[resp.path];
-          compareJson(resp.case, expectResp, resp?.data, fieldsError, resp.path, parentFields);
+          compareJson(
+              resp.case, expectResp, resp?.data, fieldsError, resp.path, parentFields
+          );
+
+          if (fieldsError.every((el) => el.path !== resp.path)) {
+            //  Good case
+            fieldsError.push({
+              reason: '',
+              result: 'G',
+              file: resp.case,
+              path: resp.path
+            });
+          }
         });
-    console.log(fieldsError);
+
+    // console.log(fieldsError);
+    // group field errors
+    const groupedResult = fieldsError.reduce((arr, curr) => {
+      const key = `${curr.path}-${curr.file}`;
+      const updateElement = arr.find((el) => el.path === key);
+      const descriptions = curr.expectedStatus ?
+          [`expect status: ${curr.expectedStatus}`,`actual status: ${curr.actualStatus}`] : [`${curr.reason}: ${curr.field}`];
+      if (updateElement) {
+        updateElement.descriptions = [...updateElement.descriptions, ...descriptions];
+      } else {
+        const result = {
+          path: key,
+          api: curr.path?.replace(new RegExp('(_[^\\_]+$)', 'g'), ''),
+          status: curr.path?.match(new RegExp('([^\\_]+$)', 'g'))[0],
+          testCase: curr.file,
+          result: curr.result,
+          descriptions
+        };
+
+        arr.push(result);
+      }
+      return arr;
+    }, []);
+
+    const templateHtml = pug.compileFile(path.join(__dirname, '/templates/html/template.pug'));
+    fs.writeFileSync(htmlpath, templateHtml({ resultResp: groupedResult }));
+    console.log(groupedResult);
   } catch (error) {
     console.error(error);
   }
@@ -42,7 +86,7 @@ function groupSwaggerResponseByPath(swagger: any, components: any) {
   }
   for (const [path, el] of Object.entries(swaggerByMethod)) {
     for (const [statusCode, response] of Object.entries(el)) {
-      const key = `${path}_${statusCode}`;
+      const key = (`${path}_${statusCode}`)?.toLowerCase();
       if (!response?.content?.['application/json']) {
         // empty response
         swaggerRespGrouped[key] = null;
@@ -77,12 +121,13 @@ function parseComponents() {
 
 function compareStatusCode(
     responseJson: { path: string, case: string, expectedStatusCode: string, currentStatusCode: string, data: any }[],
-    fieldsError: { reason: string, file: string, path: string, field?: string, expectedStatus?: string, actualStatus?: string }[]
+    fieldsError: { reason: string, file: string, path: string, result: 'G'| 'NG', field?: string, expectedStatus?: string, actualStatus?: string }[]
   ) {
   responseJson.forEach((resp) => {
     if (resp.expectedStatusCode !== resp.currentStatusCode) {
       fieldsError.push({
         reason: 'unexpected http status code',
+        result: 'NG',
         file: resp.case,
         path: resp.path,
         expectedStatus: resp.expectedStatusCode,
@@ -100,6 +145,7 @@ function compareJson(caseName: string, expectResp: any, currentResp: any, fields
   if (!expectResp && currentResp) {
     fields.push({
       reason: 'expected null value',
+      result: 'NG',
       file: caseName,
       path
     });
@@ -116,6 +162,7 @@ function compareJson(caseName: string, expectResp: any, currentResp: any, fields
       const fieldName = parentFields?.length ? `${parentFields.join('.')}${(typeof index === 'number') ? `[${index}]` : ''}.${field}` : field;
       fields.push({
         reason: 'redundant property',
+        result: 'NG',
         file: caseName,
         path,
         field: fieldName
@@ -128,10 +175,12 @@ function compareJson(caseName: string, expectResp: any, currentResp: any, fields
     const fieldName = parentFields?.length ? `${parentFields.join('.')}${(typeof index === 'number') ? `[${index}]` : ''}.${name}` : name;
     const checkObj: any = detail;
     // lack field
+    // eslint-disable-next-line no-prototype-builtins
     if (!currentResp.hasOwnProperty(name)) {
       fields.push({
         reason: 'missing property',
         file: caseName,
+        result: 'NG',
         path,
         field: fieldName
       });
@@ -146,6 +195,7 @@ function compareJson(caseName: string, expectResp: any, currentResp: any, fields
             fields.push({
               reason: 'is not array',
               file: caseName,
+              result: 'NG',
               path,
               field: fieldName
             });
@@ -165,6 +215,7 @@ function compareJson(caseName: string, expectResp: any, currentResp: any, fields
             fields.push({
               reason: 'is not float',
               file: caseName,
+              result: 'NG',
               path,
               field: fieldName
             });
@@ -174,6 +225,7 @@ function compareJson(caseName: string, expectResp: any, currentResp: any, fields
           if (!isInteger(currentResp[name])) {
             fields.push({
               reason: 'is not integer',
+              result: 'NG',
               file: caseName,
               path,
               field: fieldName
@@ -184,6 +236,7 @@ function compareJson(caseName: string, expectResp: any, currentResp: any, fields
           if (typeof currentResp[name] !== checkObj?.type) {
             fields.push({
               reason: `is not ${checkObj?.type}`,
+              result: 'NG',
               file: caseName,
               path,
               field: fieldName
@@ -235,11 +288,11 @@ function parseResponseFiles(): {
       const currentStatusCode = chunks[0].match(new RegExp('(?<=HTTP\\/2 ).\\S+', 'gm'))[0];
       try {
         currentResponses.push({
-          path: `${apiUrl}_${currentStatusCode}`,
-          case: fileName,
-          currentStatusCode,
-          expectedStatusCode: chunks[2].match(new RegExp('(?<=expect_code:).\\S+', 'gm'))[0],
-          data: JSON.parse(chunks[1])
+          path: (`${apiUrl}_${currentStatusCode}`)?.trim(),
+          case: fileName?.trim(),
+          currentStatusCode: currentStatusCode?.trim(),
+          expectedStatusCode: chunks[2].match(new RegExp('(?<=expect_code:).\\S+', 'gm'))[0]?.trim(),
+          data: JSON.parse(chunks[1]?.trim())
         });
       } catch (err) {
         console.info('invalid response type in case: ', `${responseDir}/${apiUrl}/${fileName}`);
