@@ -17,12 +17,10 @@ th, td {
   padding: 20px;
 }
 
-tr {
-  border-bottom: 1px solid black;
-}
-
 .result-ng {
+  border: 3px solid darkred;
   background-color: #e3b7aa;
+  font-weight: bold;
 }
 
 p {

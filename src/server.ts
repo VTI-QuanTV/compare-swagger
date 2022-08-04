@@ -46,27 +46,40 @@ function compare() {
 
     // console.log(fieldsError);
     // group field errors
-    const groupedResult = fieldsError.reduce((arr, curr) => {
-      const key = `${curr.path}-${curr.file}`;
-      const updateElement = arr.find((el) => el.path === key);
-      const descriptions = curr.expectedStatus ?
-          [`expect status: ${curr.expectedStatus}`,`actual status: ${curr.actualStatus}`] : [`${curr.reason}: ${curr.field}`];
-      if (updateElement) {
-        updateElement.descriptions = [...updateElement.descriptions, ...descriptions];
-      } else {
-        const result = {
-          path: key,
-          api: curr.path?.replace(new RegExp('(_[^\\_]+$)', 'g'), ''),
-          status: curr.path?.match(new RegExp('([^\\_]+$)', 'g'))[0],
-          testCase: curr.file,
-          result: curr.result,
-          descriptions
-        };
+    const regexStatusCode = new RegExp('(_[^\\_]+$)', 'g');
+    const groupedResult = fieldsError
+        .sort((a, b) => {
+          const firstPath = a.path?.replace(regexStatusCode, '');
+          const secondPath = b.path?.replace(regexStatusCode, '');
+          if (firstPath > secondPath || a.file > b.file) {
+            return 1;
+          }
+          if (firstPath < secondPath || a.file < b.file) {
+            return -1;
+          }
+          return 0;
+        })
+        .reduce((arr, curr) => {
+          const key = `${curr.path}-${curr.file}`;
+          const updateElement = arr.find((el) => el.path === key);
+          const descriptions = curr.expectedStatus ?
+              [`expect status: ${curr.expectedStatus}`,`actual status: ${curr.actualStatus}`] : [`${curr.reason}: ${curr.field}`];
+          if (updateElement) {
+            updateElement.descriptions = [...updateElement.descriptions, ...descriptions];
+          } else {
+            const result = {
+              path: key,
+              api: curr.path?.replace(regexStatusCode, ''),
+              status: curr.path?.match(new RegExp('([^\\_]+$)', 'g'))[0],
+              testCase: curr.file,
+              result: curr.result,
+              descriptions
+            };
 
-        arr.push(result);
-      }
-      return arr;
-    }, []);
+            arr.push(result);
+          }
+          return arr;
+        }, []);
 
     const templateHtml = pug.compileFile(path.join(__dirname, '/templates/html/template.pug'));
     fs.writeFileSync(htmlpath, templateHtml({ resultResp: groupedResult }));
