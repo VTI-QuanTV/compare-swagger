@@ -18,8 +18,8 @@
     "pug": "^3.0.2"
   },
   "scripts": {
-    "start": "ts-node src/server.ts",
-    "eslint": "eslint src/server.ts"
+    "start": "ts-node src/app.ts",
+    "eslint": "eslint src/app.ts"
   },
   "devDependencies": {
     "@types/js-yaml": "^4.0.5",

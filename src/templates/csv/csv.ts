@@ -1,4 +1,5 @@
 import fs from 'fs';
+import { CSV_HEADERS } from '../../constants';
 
 export class CSV {
   private data: string[];
@@ -6,8 +7,7 @@ export class CSV {
   private content: string;
 
   build(path: string): void {
-    const headers = ['API_ENDPOINT', 'TESTCASE', 'JSON_FILE', 'DESCRIPTION'];
-    this.content = `${headers.toString()}\n${this.data.join('\n')}`;
+    this.content = `${CSV_HEADERS.toString()}\n${this.data.join('\n')}`;
 
     fs.writeFileSync(path, this.content);
   }

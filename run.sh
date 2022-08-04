@@ -1,2 +1,2 @@
 npm install
-ts-node src/server.ts
+ts-node src/app.ts
