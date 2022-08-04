@@ -84,11 +84,28 @@ function compare() {
 
     //  write to html
     const templateHtml = pug.compileFile(path.join(__dirname, '/templates/html/template.pug'));
-    fs.writeFileSync(htmlPath, templateHtml({ resultResp: groupedResult }));
+    fs.writeFileSync(
+        htmlPath,
+        templateHtml({
+          resultResp: groupedResult.reduce((acc, curr) => {
+                  // @ts-ignore
+                  const dataFound = acc.find((el) => el.api === curr.api);
+                  if (dataFound) {
+                    dataFound.data = [...dataFound.data, curr];
+                  } else {
+                    acc.push({
+                     api: curr.api,
+                     data: [curr]
+                    });
+                  }
+                  return acc;
+                }, [])
+        })
+    );
 
     // write to csv
     const csv: CSV = new CSV();
-    const dataCsv = groupedResult.map((el) => `${el.api},${el.status},${el.testCase},${el.result},"${el.descriptions.toString()}"`);
+    const dataCsv = groupedResult.map((el) => `${el.api},${el.testCase},${el.result},"${el.descriptions.toString()}"`);
     csv.setData(dataCsv);
     csv.build(csvPath);
   } catch (error) {

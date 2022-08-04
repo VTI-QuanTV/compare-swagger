@@ -2,40 +2,46 @@ doctype html
 html(lang='en')
   head
     title Swagger compare results
-    style
-      include style.css
+    link(rel='stylesheet' href='https://cdn.jsdelivr.net/npm/bootstrap@4.0.0/dist/css/bootstrap.min.css' integrity='sha384-Gn5384xqQ1aoWXA+058RXPxPg6fy4IWvTNh0E263XmFcJlSAwiGgFAW/dAiS6JXm' crossorigin='anonymous')
+    script(src='https://code.jquery.com/jquery-3.2.1.slim.min.js' integrity='sha384-KJ3o2DKtIkvYIK3UENzmM7KCkRr/rE9/Qpg6aAZGJwFDMVNA/GpGFF93hXpG5KkN' crossorigin='anonymous')
+    script(src='https://cdn.jsdelivr.net/npm/popper.js@1.12.9/dist/umd/popper.min.js' integrity='sha384-ApNbgh9B+Y1QKtv3Rn7W3mgPxhU9K/ScQsAP7hUibX39j7fakFPskvXusvfa0b4Q' crossorigin='anonymous')
+    script(src='https://cdn.jsdelivr.net/npm/bootstrap@4.0.0/dist/js/bootstrap.min.js' integrity='sha384-JZR6Spejh4U02d8jOt6vLEHfe/JQGiRRSQQxSfFWpi1MquVdAyjUar5+76PVCmYl' crossorigin='anonymous')
   body
-    div.container
-      table
-        thead
-          tr
-            th API
-            th STATUS
-            th TESTCASE
-            th RESULT
-            th DESCRIPTION
-        tbody
-          each obj in resultResp
-            if obj.result === 'NG'
-              tr.result-ng
-                td #{obj.api}
-                td #{obj.status}
-                td #{obj.testCase}
-                td #{obj.result}
-                td
-                  each el, index in obj.descriptions
-                    if index === obj.descriptions.length - 1
-                      p #{el}
-                    else
-                      p #{el}
-                      br
-            else
-              tr
-                td #{obj.api}
-                td #{obj.status}
-                td #{obj.testCase}
-                td #{obj.result}
-                td
-                  each el in obj.descriptions
-                    p #{el}
-                    br
+    div#accordion.container
+    h1.ml-3 Compare results
+    each testCase, index in resultResp
+        div.card
+            div#headingOne.card-header
+              h5.mb-0
+                button.btn.btn-link(data-toggle='collapse' data-target='#collapse' + index aria-expanded='true' aria-controls='collapseOne') #{testCase.api}
+            div(id='collapse' + index aria-labelledby='headingOne' data-parent='#accordion').collapse
+              div.card-body
+                table.table.text-center
+                    thead.thead-dark
+                      tr
+                        th TESTCASE
+                        th RESULT
+                        th DESCRIPTION
+                    tbody
+                      each obj in testCase.data
+                        if obj.result === 'NG'
+                          tr.table-danger
+                            td #{obj.testCase}
+                            td #{obj.result}
+                            td
+                              each el, idx in obj.descriptions
+                                if idx === obj.descriptions.length - 1
+                                  span #{el}
+                                else
+                                  span #{el}
+                                  br
+                        else
+                          tr
+                            td #{obj.api}
+                            td #{obj.status}
+                            td #{obj.testCase}
+                            td #{obj.result}
+                            td
+                              each el in obj.descriptions
+                                span #{el}
+                                br
