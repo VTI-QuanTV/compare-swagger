@@ -3,6 +3,7 @@ import yaml from 'js-yaml';
 import fs from 'fs';
 import pug from 'pug';
 import path from 'path';
+import { CSV } from './templates/csv/csv';
 
 const config = dotenv.config();
 if (config.error) {
@@ -11,7 +12,8 @@ if (config.error) {
 
 const swaggerDir = process.env.SWAGGER_DIR;
 const responseDir = process.env.RESPONSE_DIR;
-const htmlpath = process.env.HTML_PATH;
+const htmlPath = process.env.HTML_PATH;
+const csvPath = process.env.CSV_PATH;
 
 function compare() {
   try {
@@ -44,7 +46,6 @@ function compare() {
           }
         });
 
-    // console.log(fieldsError);
     // group field errors
     const regexStatusCode = new RegExp('(_[^\\_]+$)', 'g');
     const groupedResult = fieldsError
@@ -81,9 +82,15 @@ function compare() {
           return arr;
         }, []);
 
+    //  write to html
     const templateHtml = pug.compileFile(path.join(__dirname, '/templates/html/template.pug'));
-    fs.writeFileSync(htmlpath, templateHtml({ resultResp: groupedResult }));
-    console.log(groupedResult);
+    fs.writeFileSync(htmlPath, templateHtml({ resultResp: groupedResult }));
+
+    // write to csv
+    const csv: CSV = new CSV();
+    const dataCsv = groupedResult.map((el) => `${el.api},${el.status},${el.testCase},${el.result},"${el.descriptions.toString()}"`);
+    csv.setData(dataCsv);
+    csv.build(csvPath);
   } catch (error) {
     console.error(error);
   }
