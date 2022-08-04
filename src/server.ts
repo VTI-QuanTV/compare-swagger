@@ -65,7 +65,7 @@ function compare() {
           const updateElement = arr.find((el) => el.path === key);
           const descriptions = curr.expectedStatus ?
               [`expect status: ${curr.expectedStatus}`,`actual status: ${curr.actualStatus}`] : [`${curr.reason}: ${curr.field}`];
-          if (updateElement) {
+          if (updateElement && curr.result === 'NG') {
             updateElement.descriptions = [...updateElement.descriptions, ...descriptions];
           } else {
             const result = {
@@ -74,7 +74,7 @@ function compare() {
               status: curr.path?.match(new RegExp('([^\\_]+$)', 'g'))[0],
               testCase: curr.file,
               result: curr.result,
-              descriptions
+              descriptions: curr.result === 'NG' ? descriptions : []
             };
 
             arr.push(result);
@@ -175,7 +175,7 @@ function compareStatusCode(
 }
 
 function compareJson(caseName: string, expectResp: any, currentResp: any, fields: any[], path: string, parentFields?: string[], index?: number) {
-  if (expectResp?.type !== 'object' && expectResp?.type === typeof currentResp) {
+  if ((expectResp?.type !== 'object' && expectResp?.type === typeof currentResp) || expectResp === currentResp) {
     return;
   }
 
@@ -188,6 +188,17 @@ function compareJson(caseName: string, expectResp: any, currentResp: any, fields
     });
     return;
   }
+
+  if (!currentResp && expectResp) {
+    fields.push({
+      reason: 'must not empty value',
+      result: 'NG',
+      file: caseName,
+      path
+    });
+    return;
+  }
+
 
   //  check redundant fields
   const redundantFields = Object.keys(currentResp).filter(
@@ -329,7 +340,7 @@ function parseResponseFiles(): {
           case: fileName?.trim(),
           currentStatusCode: currentStatusCode?.trim(),
           expectedStatusCode: chunks[2].match(new RegExp('(?<=expect_code:).\\S+', 'gm'))[0]?.trim(),
-          data: JSON.parse(chunks[1]?.trim())
+          data: chunks[1]?.length ? JSON.parse(chunks[1]?.trim()) : null
         });
       } catch (err) {
         console.info('invalid response type in case: ', `${responseDir}/${apiUrl}/${fileName}`);
