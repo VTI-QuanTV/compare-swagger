@@ -34,16 +34,16 @@ function compare() {
           compareJson(
               resp.case, expectResp, resp?.data, fieldsError, resp.path, parentFields
           );
-
-          if (fieldsError.every((el) => el.path !== resp.path)) {
-            //  Good case
-            fieldsError.push({
-              reason: '',
-              result: 'G',
-              file: resp.case,
-              path: resp.path
-            });
-          }
+          //
+          // if (fieldsError.every((el) => el.path !== resp.path)) {
+          //   //  Good case
+          //   fieldsError.push({
+          //     reason: '',
+          //     result: 'G',
+          //     file: resp.case,
+          //     path: resp.path
+          //   });
+          // }
         });
 
     // group field errors
@@ -72,7 +72,8 @@ function compare() {
               path: key,
               api: curr.path?.replace(regexStatusCode, ''),
               status: curr.path?.match(new RegExp('([^\\_]+$)', 'g'))[0],
-              testCase: curr.file,
+              testCase: curr.file?.match(new RegExp('[^(output_)].*[^(.json)]', 'g'))[0],
+              jsonFile: curr.file,
               result: curr.result,
               descriptions: curr.result === 'NG' ? descriptions : []
             };
@@ -105,7 +106,7 @@ function compare() {
 
     // write to csv
     const csv: CSV = new CSV();
-    const dataCsv = groupedResult.map((el) => `${el.api},${el.testCase},${el.result},"${el.descriptions.toString()}"`);
+    const dataCsv = groupedResult.map((el) => `${el.api},${el.testCase},${el.jsonFile},"${el.descriptions.toString()}"`);
     csv.setData(dataCsv);
     csv.build(csvPath);
   } catch (error) {

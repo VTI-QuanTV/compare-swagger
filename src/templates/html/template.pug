@@ -20,26 +20,27 @@ html(lang='en')
                     thead.thead-dark
                       tr
                         th TESTCASE
-                        th RESULT
+                        th JSON FILE
                         th DESCRIPTION
                     tbody
                       each obj in testCase.data
-                        if obj.result === 'NG'
-                          tr.table-danger
-                            td #{obj.testCase}
-                            td #{obj.result}
-                            td
-                              each el, idx in obj.descriptions
-                                if idx === obj.descriptions.length - 1
-                                  span #{el}
-                                else
-                                  span #{el}
-                                  br
-                        else
-                          tr
-                            td #{obj.testCase}
-                            td #{obj.result}
-                            td
-                              each el in obj.descriptions
-                                span #{el}
-                                br
+                        tr
+                          td #{obj.testCase}
+                          td #{obj.jsonFile}
+                          td
+                            each el in obj.descriptions
+                              span #{el}
+                              br
+//-                         if obj.result === 'NG'
+//-                           tr.table-danger
+//-                             td #{obj.testCase}
+//-                             td #{obj.jsonFile}
+//-                             td #{obj.result}
+//-                             td
+//-                               each el, idx in obj.descriptions
+//-                                 if idx === obj.descriptions.length - 1
+//-                                   span #{el}
+//-                                 else
+//-                                   span #{el}
+//-                                   br
+//-                         else

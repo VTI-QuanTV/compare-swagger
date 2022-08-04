@@ -6,7 +6,7 @@ export class CSV {
   private content: string;
 
   build(path: string): void {
-    const headers = ['API', 'TESTCASE', 'RESULT', 'DESCRIPTION']
+    const headers = ['API_ENDPOINT', 'TESTCASE', 'JSON_FILE', 'DESCRIPTION'];
     this.content = `${headers.toString()}\n${this.data.join('\n')}`;
 
     fs.writeFileSync(path, this.content);
