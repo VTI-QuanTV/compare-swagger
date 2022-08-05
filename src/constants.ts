@@ -3,7 +3,7 @@ export const COMPONENT_FILE_NAME = '_components.yaml';
 export const UTF_8 = 'utf-8';
 export const DOUBLE_CR_LF = '\r\n\r\n';
 export const REGEX_MATCH_STATUS_CODE = '(?<=HTTP\\/2 ).\\S+';
-export const REGEX_MATCH_EXPECTED_CODE = '(?<=expect_code:).\\S+';
+export const REGEX_MATCH_EXPECTED_CODE = '(?<=expect_code: ).\\S+';
 export const REGEX_STATUS_CODE_DASH = '(_[^\\_]+$)';
 export const REGEX_STATUS_CODE = '([^\\_]+$)';
 export const REGEX_TEST_CASE = '[^(output_)].*[^(.json)]';

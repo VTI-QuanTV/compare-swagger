@@ -25,10 +25,11 @@ const csvPath = process.env.CSV_PATH;
 
 function compare() {
   try {
+    const swaggerPath = path.join(__dirname, swaggerDir);
     const fieldsError: {
       reason: string, file: string, path: string, result: ResultEnum, field?: string, expectedStatus?: string, actualStatus?: string
     }[] = [];
-    const swagger: any = yaml.load(fs.readFileSync(`${swaggerDir}/swagger.yaml`, { encoding: UTF_8 }));
+    const swagger: any = yaml.load(fs.readFileSync(`${swaggerPath}/swagger.yaml`, { encoding: UTF_8 }));
     const components = parseComponents();
     const responsesJson = parseResponseFiles();
 
@@ -73,8 +74,14 @@ function compare() {
         .reduce((arr, curr) => {
           const key = `${curr.path}-${curr.file}`;
           const updateElement = arr.find((el) => el.path === key);
-          const descriptions = curr.expectedStatus ?
-              [`expect status: ${curr.expectedStatus}`,`actual status: ${curr.actualStatus}`] : [`${curr.reason}: ${curr.field}`];
+          let descriptions = [];
+          if (curr.field || curr.expectedStatus) {
+            descriptions = curr.expectedStatus ?
+                [`expect status: ${curr.expectedStatus}`, `actual status: ${curr.actualStatus}`] : [`${curr.reason}: ${curr.field}`];
+          } else {
+            descriptions = [curr.reason];
+          }
+
           if (updateElement && curr.result === ResultEnum.NOT_GOOD) {
             updateElement.descriptions = [...updateElement.descriptions, ...descriptions];
           } else {
@@ -96,7 +103,7 @@ function compare() {
     //  write to html
     const templateHtml = pug.compileFile(path.join(__dirname, '/templates/html/template.pug'));
     fs.writeFileSync(
-        htmlPath,
+        path.join(__dirname, htmlPath),
         templateHtml({
           resultResp: groupedResult.reduce((acc, curr) => {
                   // @ts-ignore
@@ -118,7 +125,7 @@ function compare() {
     const csv: CSV = new CSV();
     const dataCsv = groupedResult.map((el) => `${el.api},${el.testCase},${el.jsonFile},"${el.descriptions.toString()}"`);
     csv.setData(dataCsv);
-    csv.build(csvPath);
+    csv.build(path.join(__dirname, csvPath));
   } catch (error) {
     console.error(error);
   }
@@ -157,11 +164,12 @@ function groupSwaggerResponseByPath(swagger: any, components: any) {
 }
 
 function parseComponents() {
-  const component: any = yaml.load(fs.readFileSync(`${swaggerDir}/src/${COMPONENT_FILE_NAME}`, { encoding: UTF_8 }));
+  const swaggerPath = path.join(__dirname, swaggerDir);
+  const component: any = yaml.load(fs.readFileSync(`${swaggerPath}/src/${COMPONENT_FILE_NAME}`, { encoding: UTF_8 }));
   const componentsGrouped: any = {};
   for (const [className, refPath] of Object.entries(component?.schemas)) {
     const path: any = refPath;
-    componentsGrouped[className] = yaml.load(fs.readFileSync(`${swaggerDir}/src/${path?.['$ref']?.slice(2)}`, { encoding: UTF_8 }));
+    componentsGrouped[className] = yaml.load(fs.readFileSync(`${swaggerPath}/src/${path?.['$ref']?.slice(2)}`, { encoding: UTF_8 }));
   }
 
   return componentsGrouped;
@@ -186,141 +194,147 @@ function compareStatusCode(
 }
 
 function compareJson(fileName: string, expectResp: any, currentResp: any, fields: any[], path: string, parentFields?: string[], index?: number) {
-  if ((expectResp?.type !== 'object' && expectResp?.type === typeof currentResp) || expectResp === currentResp) {
-    return;
-  }
-
-  if (!expectResp && currentResp) {
-    fields.push({
-      reason: ErrorMessage.EXPECTED_NULL_VALUE,
-      result: ResultEnum.NOT_GOOD,
-      file: fileName,
-      path
-    });
-    return;
-  }
-
-  if (!currentResp && expectResp) {
-    fields.push({
-      reason: ErrorMessage.MUST_NOT_EMPTY_VALUE,
-      result: ResultEnum.NOT_GOOD,
-      file: fileName,
-      path
-    });
-    return;
-  }
-
-
-  //  check redundant fields
-  const redundantFields = Object.keys(currentResp).filter(
-      (key) => Object.keys(expectResp?.properties || expectResp).every((currentKey) => currentKey !== key)
-  );
-
-  if (redundantFields?.length) {
-    redundantFields.forEach((field) => {
-      const fieldName = parentFields?.length ? `${parentFields.join('.')}${(typeof index === 'number') ? `[${index}]` : ''}.${field}` : field;
-      fields.push({
-        reason: ErrorMessage.REDUNDANT_PROPERTY,
-        result: ResultEnum.NOT_GOOD,
-        file: fileName,
-        path,
-        field: fieldName
-      });
-    });
-  }
-
-  // compare to expected
-  for (const [name, detail] of Object.entries(expectResp?.properties || expectResp)) {
-    const fieldName = parentFields?.length ? `${parentFields.join('.')}${(typeof index === 'number') ? `[${index}]` : ''}.${name}` : name;
-    const checkObj: any = detail;
-    // lack field
-    // eslint-disable-next-line no-prototype-builtins
-    if (!currentResp.hasOwnProperty(name)) {
-      fields.push({
-        reason: ErrorMessage.MISSING_PROPERTY,
-        file: fileName,
-        result: ResultEnum.NOT_GOOD,
-        path,
-        field: fieldName
-      });
-      continue;
+  try {
+    if ((expectResp?.type !== 'object' && expectResp?.type === typeof currentResp) ||
+        expectResp === currentResp ||
+        (isEmpty(expectResp) && isEmpty(currentResp))) {
+      return;
     }
 
-    if (!checkObj?.properties && currentResp[name] !== null) {
-      // no need recursion
-      switch (checkObj?.type) {
-        case 'array':
-          if (!Array.isArray(currentResp[name])) {
-            fields.push({
-              reason: ErrorMessage.IS_NOT_ARRAY,
-              file: fileName,
-              result: ResultEnum.NOT_GOOD,
-              path,
-              field: fieldName
-            });
-          }
-          if (Array.isArray(currentResp[name]) && checkObj?.items) {
-            // recursion
-            let idx = (typeof index === 'number') ? index : 0;
-            parentFields.push(name);
-            for (const nestedObj of currentResp[name]) {
-              compareJson(fileName, checkObj?.items, nestedObj, fields, path, parentFields, idx);
-              idx++;
+    if (!expectResp && currentResp) {
+      fields.push({
+        reason: ErrorMessage.EXPECTED_NULL_VALUE,
+        result: ResultEnum.NOT_GOOD,
+        file: fileName,
+        path
+      });
+      return;
+    }
+
+    if (!currentResp && expectResp) {
+      fields.push({
+        reason: ErrorMessage.MUST_NOT_EMPTY_VALUE,
+        result: ResultEnum.NOT_GOOD,
+        file: fileName,
+        path
+      });
+      return;
+    }
+
+
+    //  check redundant fields
+    const redundantFields = Object.keys(currentResp).filter(
+        (key) => Object.keys(expectResp?.properties || expectResp).every((currentKey) => currentKey !== key)
+    );
+
+    if (redundantFields?.length) {
+      redundantFields.forEach((field) => {
+        const fieldName = parentFields?.length ? `${parentFields.join('.')}${(typeof index === 'number') ? `[${index}]` : ''}.${field}` : field;
+        fields.push({
+          reason: ErrorMessage.REDUNDANT_PROPERTY,
+          result: ResultEnum.NOT_GOOD,
+          file: fileName,
+          path,
+          field: fieldName
+        });
+      });
+    }
+
+    // compare to expected
+    for (const [name, detail] of Object.entries(expectResp?.properties || expectResp)) {
+      const fieldName = parentFields?.length ? `${parentFields.join('.')}${(typeof index === 'number') ? `[${index}]` : ''}.${name}` : name;
+      const checkObj: any = detail;
+      // lack field
+      // eslint-disable-next-line no-prototype-builtins
+      if (!currentResp.hasOwnProperty(name)) {
+        fields.push({
+          reason: ErrorMessage.MISSING_PROPERTY,
+          file: fileName,
+          result: ResultEnum.NOT_GOOD,
+          path,
+          field: fieldName
+        });
+        continue;
+      }
+
+      if (!checkObj?.properties && currentResp[name] !== null) {
+        // no need recursion
+        switch (checkObj?.type) {
+          case 'array':
+            if (!Array.isArray(currentResp[name])) {
+              fields.push({
+                reason: ErrorMessage.IS_NOT_ARRAY,
+                file: fileName,
+                result: ResultEnum.NOT_GOOD,
+                path,
+                field: fieldName
+              });
             }
-          }
-          break;
-        case 'float':
-          if (typeof currentResp[name] !== 'number') {
-            fields.push({
-              reason: ErrorMessage.IS_NOT_FLOAT,
-              file: fileName,
-              result: ResultEnum.NOT_GOOD,
-              path,
-              field: fieldName
-            });
-          }
-          break;
-        case 'integer':
-          if (!isInteger(currentResp[name])) {
-            fields.push({
-              reason: ErrorMessage.IS_NOT_INTEGER,
-              result: ResultEnum.NOT_GOOD,
-              file: fileName,
-              path,
-              field: fieldName
-            });
-          }
-          break;
-        default:
-          if (typeof currentResp[name] !== checkObj?.type) {
-            fields.push({
-              reason: `is not ${checkObj?.type}`,
-              result: ResultEnum.NOT_GOOD,
-              file: fileName,
-              path,
-              field: fieldName
-            });
-          }
-          break;
+            if (Array.isArray(currentResp[name]) && checkObj?.items) {
+              // recursion
+              let idx = (typeof index === 'number') ? index : 0;
+              parentFields.push(name);
+              for (const nestedObj of currentResp[name]) {
+                compareJson(fileName, checkObj?.items, nestedObj, fields, path, parentFields, idx);
+                idx++;
+              }
+            }
+            break;
+          case 'float':
+            if (typeof currentResp[name] !== 'number') {
+              fields.push({
+                reason: ErrorMessage.IS_NOT_FLOAT,
+                file: fileName,
+                result: ResultEnum.NOT_GOOD,
+                path,
+                field: fieldName
+              });
+            }
+            break;
+          case 'integer':
+            if (!isInteger(currentResp[name])) {
+              fields.push({
+                reason: ErrorMessage.IS_NOT_INTEGER,
+                result: ResultEnum.NOT_GOOD,
+                file: fileName,
+                path,
+                field: fieldName
+              });
+            }
+            break;
+          default:
+            if (typeof currentResp[name] !== checkObj?.type) {
+              fields.push({
+                reason: `is not ${checkObj?.type}`,
+                result: ResultEnum.NOT_GOOD,
+                file: fileName,
+                path,
+                field: fieldName
+              });
+            }
+            break;
+        }
+
+        continue;
       }
 
-      continue;
-    }
-
-    if (checkObj?.properties && Array.isArray(currentResp[name])) {
-      // recursion
-      let idx = (typeof index === 'number') ? index : 0;
-      parentFields.push(name);
-      for (const nestedObj of currentResp[name]) {
-        compareJson(fileName, checkObj?.properties, nestedObj, fields, path, parentFields, idx);
-        idx++;
+      if (checkObj?.properties && Array.isArray(currentResp[name])) {
+        // recursion
+        let idx = (typeof index === 'number') ? index : 0;
+        parentFields.push(name);
+        for (const nestedObj of currentResp[name]) {
+          compareJson(fileName, checkObj?.properties, nestedObj, fields, path, parentFields, idx);
+          idx++;
+        }
+        continue;
       }
-      continue;
-    }
 
-    if (checkObj?.properties && !Array.isArray(currentResp[name])) {
-      compareJson(fileName, checkObj?.properties, currentResp[name], fields, path, parentFields, index);
+      if (checkObj?.properties && !Array.isArray(currentResp[name])) {
+        compareJson(fileName, checkObj?.properties, currentResp[name], fields, path, parentFields, index);
+      }
     }
+  } catch (error) {
+    throw new Error(`Unhandled error in: ${path}/${fileName}`);
   }
 }
 
@@ -338,14 +352,19 @@ function parseResponseFiles(): {
     currentStatusCode: string,
     data: any,
   }[] = [];
-  const dirs = fs.readdirSync(responseDir);
+  const responsePath = path.join(__dirname, responseDir);
+  const dirs = fs.readdirSync(responsePath);
   for (const apiUrl of dirs) {
-    const files = fs.readdirSync(`${responseDir}/${apiUrl}`);
+    const files = fs.readdirSync(`${responsePath}/${apiUrl}`);
     for (const fileName of files) {
-      const file =  fs.readFileSync(`${responseDir}/${apiUrl}/${fileName}`, { encoding: UTF_8 });
-      const chunks = file.split(DOUBLE_CR_LF);
-      const currentStatusCode = chunks[0].match(new RegExp(REGEX_MATCH_STATUS_CODE, 'gm'))[0];
       try {
+        const file =  fs.readFileSync(`${responsePath}/${apiUrl}/${fileName}`, { encoding: UTF_8 });
+        const chunks = file.split(DOUBLE_CR_LF);
+        //  invalid format json file
+        if (!chunks[0] && !chunks[2]) {
+          throw new Error();
+        }
+        const currentStatusCode = chunks[0].match(new RegExp(REGEX_MATCH_STATUS_CODE, 'gm'))[0];
         currentResponses.push({
           path: (`${apiUrl}_${currentStatusCode}`)?.trim(),
           fileName: fileName?.trim(),
@@ -354,7 +373,7 @@ function parseResponseFiles(): {
           data: chunks[1]?.length ? JSON.parse(chunks[1]?.trim()) : null
         });
       } catch (err) {
-        console.info('invalid response type in case: ', `${responseDir}/${apiUrl}/${fileName}`);
+        console.info('invalid response type in case: ', `${responsePath}\\${apiUrl}\\${fileName}`);
       }
     }
   }
@@ -364,6 +383,10 @@ function parseResponseFiles(): {
 
 function isInteger(n: number) {
   return n === +n && n === (n|0);
+}
+
+function isEmpty(el: any) {
+  return (!el || el.length === 0 );
 }
 
 
