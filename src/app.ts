@@ -8,7 +8,7 @@ import {
   APPLICATION_JSON,
   COMPONENT_FILE_NAME,
   DOUBLE_CR_LF, ErrorMessage, REGEX_LAST_SLASH, REGEX_MATCH_EXPECTED_CODE,
-  REGEX_MATCH_STATUS_CODE, REGEX_STATUS_CODE, REGEX_STATUS_CODE_DASH, REGEX_TEST_CASE,
+  REGEX_PROTOCOL_VERSION, REGEX_STATUS_CODE, REGEX_STATUS_CODE_DASH, REGEX_TEST_CASE,
   ResultEnum,
   UTF_8
 } from './constants';
@@ -63,10 +63,16 @@ function compare() {
         .sort((a, b) => {
           const firstPath = a.path?.replace(regexStatusCodeDash, '');
           const secondPath = b.path?.replace(regexStatusCodeDash, '');
-          if (firstPath > secondPath || a.file > b.file) {
+          if (firstPath > secondPath) {
             return 1;
           }
-          if (firstPath < secondPath || a.file < b.file) {
+          if (firstPath < secondPath) {
+            return -1;
+          }
+          if (a.file > b.file) {
+            return 1;
+          }
+          if (a.file < b.file) {
             return -1;
           }
           return 0;
@@ -106,18 +112,18 @@ function compare() {
         path.join(__dirname, htmlPath),
         templateHtml({
           resultResp: groupedResult.reduce((acc, curr) => {
-                  // @ts-ignore
-                  const dataFound = acc.find((el) => el.api === curr.api);
-                  if (dataFound) {
-                    dataFound.data = [...dataFound.data, curr];
-                  } else {
-                    acc.push({
-                     api: curr.api,
-                     data: [curr]
-                    });
-                  }
-                  return acc;
-                }, [])
+            // @ts-ignore
+            const dataFound = acc.find((el) => el.api === curr.api);
+            if (dataFound) {
+              dataFound.data = [...dataFound.data, curr];
+            } else {
+              acc.push({
+                api: curr.api,
+                data: [curr]
+              });
+            }
+            return acc;
+          }, [])
         })
     );
 
@@ -178,7 +184,7 @@ function parseComponents() {
 function compareStatusCode(
     responseJson: { path: string, fileName: string, expectedStatusCode: string, currentStatusCode: string, data: any }[],
     fieldsError: { reason: string, file: string, path: string, result: ResultEnum, field?: string, expectedStatus?: string, actualStatus?: string }[]
-  ) {
+) {
   responseJson.forEach((resp) => {
     if (resp.expectedStatusCode !== resp.currentStatusCode) {
       fieldsError.push({
@@ -195,9 +201,11 @@ function compareStatusCode(
 
 function compareJson(fileName: string, expectResp: any, currentResp: any, fields: any[], path: string, parentFields?: string[], index?: number) {
   try {
-    if ((expectResp?.type !== 'object' && expectResp?.type === typeof currentResp) ||
+    if (
+        (expectResp?.type !== 'object' && expectResp?.type === typeof currentResp) ||
         expectResp === currentResp ||
-        (isEmpty(expectResp) && isEmpty(currentResp))) {
+        (isEmpty(expectResp) && isEmpty(currentResp))
+    ) {
       return;
     }
 
@@ -339,12 +347,12 @@ function compareJson(fileName: string, expectResp: any, currentResp: any, fields
 }
 
 function parseResponseFiles(): {
-    path: string,
-    fileName: string,
-    expectedStatusCode: string,
-    currentStatusCode: string,
-    data: any,
-  }[] {
+  path: string,
+  fileName: string,
+  expectedStatusCode: string,
+  currentStatusCode: string,
+  data: any,
+}[] {
   const currentResponses: {
     path: string,
     fileName: string,
@@ -364,10 +372,10 @@ function parseResponseFiles(): {
         if (!chunks[0] && !chunks[2]) {
           throw new Error();
         }
-        const currentStatusCode = chunks[0].match(new RegExp(REGEX_MATCH_STATUS_CODE, 'gm'))[0];
+        const currentStatusCode = chunks[0].match(new RegExp(REGEX_PROTOCOL_VERSION, 'gm'))[0];
         currentResponses.push({
-          path: (`${apiUrl}_${currentStatusCode}`)?.trim(),
-          fileName: fileName?.trim(),
+          path: (`${apiUrl}_${currentStatusCode}`)?.trim()?.toLowerCase(),
+          fileName: fileName?.trim()?.toLowerCase(),
           currentStatusCode: currentStatusCode?.trim(),
           expectedStatusCode: chunks[2].match(new RegExp(REGEX_MATCH_EXPECTED_CODE, 'gm'))[0]?.trim(),
           data: chunks[1]?.length ? JSON.parse(chunks[1]?.trim()) : null
